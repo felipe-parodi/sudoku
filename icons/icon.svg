@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4f7fe0"/><stop offset="1" stop-color="#2c4fa3"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect x="96" y="96" width="320" height="320" rx="22" fill="#fff"/>
+  <g stroke="#c9d3e6" stroke-width="4">
+    <path d="M149.3 104v304M256 104v304M362.7 104v304M104 149.3h304M104 256h304M104 362.7h304" stroke="none"/>
+  </g>
+  <g stroke="#2c4fa3" stroke-width="8" stroke-linecap="round">
+    <path d="M202.7 112v288M309.3 112v288M112 202.7h288M112 309.3h288"/>
+  </g>
+  <rect x="202.7" y="202.7" width="106.6" height="106.6" fill="#bbdefb"/>
+  <g font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="76" text-anchor="middle" fill="#344861">
+    <text x="149" y="182">5</text>
+    <text x="362" y="182" fill="#325aaf">3</text>
+    <text x="256" y="283" fill="#325aaf" font-weight="600">9</text>
+    <text x="149" y="389" fill="#325aaf">7</text>
+    <text x="362" y="389">1</text>
+  </g>
+  <path d="M202.7 112v288M309.3 112v288M112 202.7h288M112 309.3h288" stroke="#2c4fa3" stroke-width="8" stroke-linecap="round"/>
+</svg>
