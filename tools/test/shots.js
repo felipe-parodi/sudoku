@@ -11,7 +11,7 @@ const BASE = process.env.SUDOKU_URL || 'http://localhost:8650/';
   await p.goto(BASE);
   await p.screenshot({ path: OUT + 'home-empty.png' });
   await p.tap('[data-act=new]');
-  await p.waitForTimeout(400);
+  await p.waitForTimeout(450);
   await p.screenshot({ path: OUT + 'newgame.png' });
   await p.tap('[data-act=start][data-level=hard]');
   await p.waitForTimeout(300);
@@ -40,14 +40,14 @@ const BASE = process.env.SUDOKU_URL || 'http://localhost:8650/';
     if (st !== 'playing') break;
     await p.tap('[data-act=hint]');
   }
-  await p.waitForTimeout(600);
-  await p.screenshot({ path: OUT + 'wave.png' });
+  for (const ms of [150, 300, 450, 650]) { await p.waitForTimeout(ms === 150 ? 150 : 150); await p.screenshot({ path: OUT + `wave-${ms}.png` }); }
   await p.waitForTimeout(1600);
   await p.screenshot({ path: OUT + 'win.png' });
   await p.tap('#sheet [data-act=home]'); await p.waitForTimeout(300);
   await p.screenshot({ path: OUT + 'home.png' });
   await p.tap('#tab-stats'); await p.waitForTimeout(200);
   await p.screenshot({ path: OUT + 'stats.png', fullPage: false });
+  await p.tap('#tab-home'); await p.tap('[data-act=continue]').catch(()=>{});
   console.log('errors:', errs);
   await b.close();
 })();

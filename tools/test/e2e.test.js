@@ -76,15 +76,15 @@ async function gameFlow() {
   await p.waitForTimeout(800);
   s = await st(p);
   ok(s.slots.free.status === 'over', '3 mistakes → game over');
-  ok(await p.isVisible('#sheet >> text=Game Over'), 'game over sheet shown');
-  await p.tap('[data-act=second-chance]'); await p.waitForTimeout(400);
+  ok(await p.isVisible('#alert-root >> text=Game Over'), 'game over alert shown');
+  await p.tap('#alert-root >> text=Second Chance'); await p.waitForTimeout(300);
   s = await st(p); ok(s.slots.free.status === 'playing' && (await p.textContent('#st-mistakes')).trim() === '2/3', 'second chance continues at 2/3');
 
   // finish → win, stats, streak
   await p.evaluate(() => { const g = __sudoku.state.slots.free; for (let i = 0; i < 81; i++) g.values[i] = +g.solution[i]; g.values[g.puzzle.indexOf('.')] = 0; });
   const last = (await st(p)).slots.free.puzzle.indexOf('.');
   await cells[last].tap(); await p.tap(`#pad button[data-d="${solAt(last)}"]`);
-  await p.waitForTimeout(1800);
+  await p.waitForTimeout(2500);
   s = await st(p);
   ok(s.slots.free.status === 'won', 'last digit wins');
   ok(s.stats.medium.won === 1 && s.stats.medium.streak === 1 && s.stats.medium.started === 1, 'stats: 1 started, 1 won, streak 1');

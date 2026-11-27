@@ -2,7 +2,7 @@
 /* Sudoku service worker — cache-first, so the app runs fully offline.
    Bump VERSION (and app.js VERSION) on every deploy; installed phones pick
    the update up the next time they open the app online. */
-const VERSION = 'v1.1.0';
+const VERSION = 'v1.2.0';
 const CACHE = 'sudoku-' + VERSION;
 const ASSETS = [
   './', './index.html', './styles.css', './app.js', './sudoku.js', './gen-worker.js',

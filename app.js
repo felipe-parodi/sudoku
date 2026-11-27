@@ -4,7 +4,7 @@
    download after install and no two games are alike. */
 (() => {
   const SD = window.Sudoku;
-  const VERSION = '1.1.0'; // keep in sync with sw.js
+  const VERSION = '1.2.0'; // keep in sync with sw.js
   const KEY = 'sudoku:v1';
   const LEVELS = ['easy', 'medium', 'hard', 'extreme'];
   const LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard', extreme: 'Extreme' };
@@ -22,6 +22,10 @@
 
   const $ = id => document.getElementById(id);
   const ICON = {
+    chev: '<svg class="chev" viewBox="0 0 8 13"><path d="M1.5 1.5 6.5 6.5 1.5 11.5"/></svg>',
+    cal: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
+    plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+    flame: '<svg viewBox="0 0 24 24"><path d="M12 21c-3.9 0-6.5-2.6-6.5-6.1 0-3.4 2.4-5.4 3.9-7.9.4 1.6 1.3 2.6 2.4 3.1.2-2.8 1.2-5.1 3.2-7.1.3 3.4 3.5 6.1 3.5 11.1 0 4-2.7 6.9-6.5 6.9z"/></svg>',
     trophy: '<svg viewBox="0 0 24 24"><path d="M7 3.5h10v5.2a5 5 0 0 1-10 0z"/><path d="M17 5h2.8v1.6A3.4 3.4 0 0 1 16.6 10M7 5H4.2v1.6A3.4 3.4 0 0 0 7.4 10M9.2 20.5h5.6M12 14v6.5"/></svg>',
     check: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
     x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
@@ -211,70 +215,53 @@
     const dSlot = S.slots.daily && S.slots.daily.daily === t ? S.slots.daily : null;
     const free = S.slots.free && S.slots.free.status !== 'won' ? S.slots.free : null;
     const wk = S.weeks[weekKey()] || 0;
+    let played = 0, won = 0;
+    for (const l of LEVELS) { played += S.stats[l].started; won += S.stats[l].won; }
     const streak = dailyStreak();
-    const totals = { played: 0, won: 0, streak: 0 };
-    for (const l of LEVELS) { totals.played += S.stats[l].started; totals.won += S.stats[l].won; }
-    totals.streak = currentStreak();
-
-    // this week's daily strip, Mon..Sun
-    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
-    let dots = '';
-    for (let k = 0; k < 7; k++) {
-      const d = new Date(monday); d.setDate(monday.getDate() + k);
-      const key = ymd(d);
-      dots += `<div><b class="${S.daily[key] ? 'on' : ''} ${key === t ? 'today' : ''}"></b>${'MTWTFSS'[k]}</div>`;
-    }
-
-    const dailyCard = `
-      <div class="card">
-        <h3>Daily puzzle · ${LABEL[dl]}</h3>
-        <div class="hero" style="margin-top:10px">
-          <div class="txt">
-            <div class="t1">${now.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</div>
-            <div class="t2">${dDone ? `Solved in ${fmtTime(dDone.time)} · ${fmtNum(dDone.score)} pts`
-        : dSlot && dSlot.counted ? `In progress · ${fmtTime(dSlot.elapsed / 1000)}` : 'Same puzzle on every phone today'}</div>
-            <div class="t2">${streak ? `${streak}-day streak` : 'Start a streak today'}</div>
-          </div>
-          ${dDone ? `<span class="check-chip">${ICON.check}Done</span>`
-        : `<button class="pill-btn small" data-act="daily">${dSlot && dSlot.counted ? 'Resume' : 'Play'}</button>`}
-        </div>
-        <div class="week-dots">${dots}</div>
-      </div>`;
-
-    const cont = free ? `
-      <div class="card">
-        <h3>Continue</h3>
-        <div class="hero" style="margin-top:10px">
-          ${miniBoard(free)}
-          <div class="txt">
-            <div class="t1">${LABEL[free.level]}</div>
-            <div class="t2">${fmtTime(free.elapsed / 1000)} · ${free.status === 'over' ? 'Out of mistakes' : `${filled(free)}/${toFill(free)} filled`}</div>
-            <div class="progress"><i style="width:${(100 * filled(free) / toFill(free)).toFixed(1)}%"></i></div>
-          </div>
-        </div>
-        <div class="btn-col" style="margin-top:14px"><button class="pill-btn wide" data-act="continue">${ICON.play}Continue</button></div>
-      </div>` : '';
+    const dots = k => `<span class="lvl-dots">${[0, 1, 2, 3].map(j => `<i class="${j <= k ? 'on' : ''}"></i>`).join('')}</span>`;
 
     $('home').innerHTML = `
       <div class="page">
-        <div class="date-line">${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
-        <div class="big-title">Sudoku</div>
-        ${!S.history.length && !free ? `<div class="card howto"><h3 style="margin-bottom:8px">How to play</h3>
-          Fill the grid so every <b>row</b>, <b>column</b> and <b>3×3 box</b> has 1 to 9 once. Tap a square, then a number.
-          <b>Notes</b> lets you pencil in options. Three mistakes ends the game.</div>` : ''}
-        ${cont}
-        <button class="pill-btn wide ${free ? 'ghost' : ''}" data-act="new">New Game</button>
-        ${dailyCard}
-        <div class="card">
-          <div class="week-row"><h3>This week</h3><span class="n">${ICON.trophy}${fmtNum(wk)}</span></div>
-          <div class="quick">
-            <div><b>${totals.played}</b><span>Played</span></div>
-            <div><b>${totals.won}</b><span>Won</span></div>
-            <div><b>${totals.streak}</b><span>Win streak</span></div>
-            <div><b>${streak}</b><span>Daily streak</span></div>
-          </div>
+        <div class="large-title">Sudoku</div>
+        <div class="subtitle">${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+
+        <div class="group">
+          ${free ? `
+          <button class="cellrow tall has-icon" data-act="continue">
+            ${miniBoard(free)}
+            <span class="grow"><div>Continue Game</div>
+              <div class="sub">${LABEL[free.level]} · ${fmtTime(free.elapsed / 1000)} · ${free.status === 'over' ? 'out of mistakes' : `${filled(free)} of ${toFill(free)}`}</div></span>
+            ${ICON.chev}
+          </button>` : ''}
+          <button class="cellrow action has-icon" data-act="new">
+            <span class="app-ic" style="background:var(--accent)">${ICON.plus}</span>
+            <span class="grow">New Game</span>
+          </button>
         </div>
+
+        <div class="sec-h">Daily Challenge</div>
+        <div class="group">
+          <button class="cellrow tall has-icon" data-act="daily" ${dDone ? 'disabled' : ''}>
+            <span class="app-ic" style="background:#ff3b30">${ICON.cal}</span>
+            <span class="grow"><div>${now.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</div>
+              <div class="sub">${LABEL[dl]}${dDone ? ` · solved in ${fmtTime(dDone.time)}` : dSlot && dSlot.counted ? ` · ${fmtTime(dSlot.elapsed / 1000)} so far` : ''}</div></span>
+            ${dDone ? `<svg class="ok" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>` : ICON.chev}
+          </button>
+        </div>
+        <div class="sec-f">The same puzzle on every phone today.${streak ? ` ${streak}-day streak.` : ''}</div>
+
+        <div class="sec-h">This Week</div>
+        <div class="group">
+          <div class="cellrow"><span class="grow">Points</span><span class="val">${fmtNum(wk)}</span></div>
+          <div class="cellrow"><span class="grow">Games Won</span><span class="val">${won} of ${played}</span></div>
+          <div class="cellrow"><span class="grow">Win Streak</span><span class="val">${currentStreak()}</span></div>
+          <div class="cellrow"><span class="grow">Daily Streak</span><span class="val">${streak}</span></div>
+        </div>
+
+        ${!S.history.length ? `<div class="sec-h">How to Play</div>
+        <div class="group"><div class="cellrow"><span class="grow" style="font-size:15px;line-height:1.4">Fill the grid so every row, column and 3×3 box contains 1 to 9 once. Tap a square, then a number. Three mistakes ends the game.</span></div></div>` : ''}
       </div>`;
+    void dots;
   }
 
   /* ---------------- stats ---------------- */
@@ -293,35 +280,28 @@
     const rate = agg.started ? Math.round(100 * agg.won / agg.started) + '%' : '—';
     const avg = agg.won ? fmtTime(agg.total / agg.won) : '—';
     const hist = S.history.filter(h => statsLevel === 'all' || h.level === statsLevel).slice(0, 25);
-    const tile = (k, n) => `<div class="tile"><div class="k">${k}</div><div class="n">${n}</div></div>`;
-    const weeks = Object.keys(S.weeks).sort().reverse().slice(0, 1);
     const best = Math.max(0, ...Object.values(S.weeks));
+    const row = (k, v) => `<div class="cellrow"><span class="grow">${k}</span><span class="val">${v}</span></div>`;
     $('stats').innerHTML = `
       <div class="page">
-        <div class="big-title" style="margin-top:6px">Statistics</div>
+        <div class="large-title">Statistics</div>
         <div class="seg">${['all', ...LEVELS].map(l => `<button data-act="stats-level" data-level="${l}" class="${l === statsLevel ? 'on' : ''}">${l === 'all' ? 'All' : LABEL[l]}</button>`).join('')}</div>
-        <div class="section-h">Games</div>
-        <div class="tiles">
-          ${tile('Games started', agg.started)}${tile('Games won', agg.won)}
-          ${tile('Win rate', rate)}${tile('Wins, no mistakes', agg.perfect)}
-        </div>
-        <div class="section-h">Time</div>
-        <div class="tiles">${tile('Best time', agg.best == null ? '—' : fmtTime(agg.best))}${tile('Average time', avg)}</div>
-        <div class="section-h">Streaks</div>
-        <div class="tiles">
-          ${tile('Current win streak', agg.streak)}${tile('Best win streak', agg.bestStreak)}
-          ${tile('Daily streak', dailyStreak())}${tile('Dailies solved', Object.keys(S.daily).length)}
-        </div>
-        <div class="section-h">Points</div>
-        <div class="tiles">${tile('This week', fmtNum(S.weeks[weekKey()] || 0))}${tile('Best week', fmtNum(best))}</div>
-        <div class="section-h">Recent games</div>
-        <div class="list">${hist.length ? hist.map(h => `
-          <div class="row">
-            <div><div>${LABEL[h.level]}${h.daily ? ' · Daily' : ''}</div><div class="sub">${new Date(h.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${h.mistakes} mistake${h.mistakes === 1 ? '' : 's'}${h.hints ? ` · ${h.hints} hint${h.hints === 1 ? '' : 's'}` : ''}</div></div>
-            <div class="r"><span class="tag ${h.won ? 'won' : ''}">${h.won ? 'Won' : 'Lost'}</span><div class="sub" style="margin-top:4px">${fmtTime(h.time)}${h.won ? ' · ' + fmtNum(h.score) : ''}</div></div>
-          </div>`).join('') : '<div class="empty">No finished games yet.</div>'}</div>
+        <div class="sec-h">Games</div>
+        <div class="group">${row('Games Started', agg.started)}${row('Games Won', agg.won)}${row('Win Rate', rate)}${row('Wins Without Mistakes', agg.perfect)}</div>
+        <div class="sec-h">Time</div>
+        <div class="group">${row('Best Time', agg.best == null ? '—' : fmtTime(agg.best))}${row('Average Time', avg)}</div>
+        <div class="sec-h">Streaks</div>
+        <div class="group">${row('Current Win Streak', agg.streak)}${row('Best Win Streak', agg.bestStreak)}${row('Daily Streak', dailyStreak())}${row('Daily Challenges Solved', Object.keys(S.daily).length)}</div>
+        <div class="sec-h">Points</div>
+        <div class="group">${row('This Week', fmtNum(S.weeks[weekKey()] || 0))}${row('Best Week', fmtNum(best))}</div>
+        <div class="sec-h">Recent Games</div>
+        <div class="group">${hist.length ? hist.map(h => `
+          <div class="cellrow">
+            <span class="grow"><div>${LABEL[h.level]}${h.daily ? ' · Daily' : ''}</div>
+              <div class="sub">${new Date(h.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${h.mistakes} mistake${h.mistakes === 1 ? '' : 's'}${h.hints ? ` · ${h.hints} hint${h.hints === 1 ? '' : 's'}` : ''}</div></span>
+            <span class="val" style="text-align:right">${h.won ? fmtTime(h.time) : 'Lost'}<div class="sub">${h.won ? fmtNum(h.score) + ' pts' : fmtTime(h.time)}</div></span>
+          </div>`).join('') : '<div class="cellrow"><span class="grow val">No finished games yet</span></div>'}</div>
       </div>`;
-    void weeks;
   }
 
   /* ---------------- board ---------------- */
@@ -456,7 +436,7 @@
   let ticker = null, lastTick = 0, saveTick = 0;
   function running() {
     const g = G();
-    return route === 'game' && g && g.status === 'playing' && !paused && document.visibilityState === 'visible' && $('sheet-root').hidden;
+    return route === 'game' && g && g.status === 'playing' && !paused && document.visibilityState === 'visible' && $('sheet-root').hidden && !$('alert-root');
   }
   function syncTicker() {
     if (running()) {
@@ -494,9 +474,10 @@
       if (seen.has(j)) continue; seen.add(j);
       list.push(j);
     }
-    const key = j => (8 - SD.COL[j]) * 3 + SD.ROW[j] * (units.every(u => u >= 9 && u < 18) ? 3 : .7);
+    const colOnly = units.every(u => u >= 9 && u < 18);
+    const key = j => colOnly ? SD.ROW[j] * 55 : (8 - SD.COL[j]) * 60 + SD.ROW[j] * 14;
     const k0 = Math.min(...list.map(key));
-    animMany(list.map(j => [j, (key(j) - k0) * 16]), 'flash');
+    animMany(list.map(j => [j, key(j) - k0]), 'flash');
   }
 
   function input(d) {
@@ -535,7 +516,7 @@
           tick();
           g.status = 'over';
           renderGame(); save(true); syncTicker();
-          setTimeout(gameOverSheet, 420);
+          setTimeout(gameOverAlert, 420);
           return;
         }
       }
@@ -613,8 +594,9 @@
     g.sel = -1; paused = false;
     renderGame(); save(true); syncTicker();
     // the whole board washes blue, sweeping right → left
-    animMany([...Array(81).keys()].map(i => [i, (8 - SD.COL[i]) * 75 + SD.ROW[i] * 14]), 'flash');
-    setTimeout(() => winSheet(g), reduceMotion.matches ? 150 : 1550);
+    // the whole board ripples column by column, right → left
+    animMany([...Array(81).keys()].map(i => [i, (8 - SD.COL[i]) * 95 + SD.ROW[i] * 22]), 'flash');
+    setTimeout(() => winSheet(g), 8 * 95 + 8 * 22 + 660 + 250);
   }
 
   function startNew(level, daily = null) {
@@ -633,7 +615,7 @@
   function openSlot(slot) {
     S.active = slot; paused = false; save();
     go('game');
-    if (G().status === 'over') setTimeout(gameOverSheet, 150);
+    if (G().status === 'over') setTimeout(gameOverAlert, 150);
   }
   function playDaily() {
     const t = today();
@@ -651,14 +633,18 @@
     closeSheet(true); renderGame(); save(true); syncTicker();
   }
 
-  /* ---------------- sheets ---------------- */
+  /* ---------------- sheets & alerts ---------------- */
   let sheetLocked = false, sheetTimer = null;
-  function openSheet(html, { lock = false } = {}) {
+  // kind: 'page' (nav bar + Done) or 'action' (iOS action sheet)
+  function openSheet(html, { lock = false, kind = 'page', title = '' } = {}) {
     clearTimeout(sheetTimer);
     sheetLocked = lock;
     $('toast').classList.remove('show');
-    const root = $('sheet-root');
-    $('sheet').innerHTML = (lock ? '' : '<div class="grabber"></div>') + html;
+    const root = $('sheet-root'), sh = $('sheet');
+    sh.className = 'sheet ' + (kind === 'action' ? 'action-sheet' : 'page-sheet');
+    sh.innerHTML = kind === 'page'
+      ? `<div class="navbar"><span></span><span class="t">${title}</span>${lock ? '<span></span>' : '<button class="done" data-act="close">Done</button>'}</div>${html}`
+      : html;
     root.hidden = false;
     requestAnimationFrame(() => requestAnimationFrame(() => root.classList.add('open')));
     syncTicker();
@@ -670,50 +656,61 @@
     const done = () => {
       root.hidden = true; syncTicker();
       const g = G();
-      if (route === 'game' && g && g.status === 'over') setTimeout(gameOverSheet, 50);
+      if (route === 'game' && g && g.status === 'over') setTimeout(gameOverAlert, 50);
     };
     clearTimeout(sheetTimer);
-    if (instant) done(); else sheetTimer = setTimeout(done, 340);
+    if (instant) done(); else sheetTimer = setTimeout(done, 380);
   }
+  function actionSheet(title, msg, buttons) {
+    openSheet(`<div class="as-group">
+        ${title || msg ? `<div class="as-title">${title ? `<b>${title}</b>` : ''}${msg || ''}</div>` : ''}
+        ${buttons.map(b => `<button class="as-btn" ${b.attrs}>${b.label}</button>`).join('')}
+      </div>
+      <button class="as-btn as-cancel" data-act="close">Cancel</button>`, { kind: 'action' });
+    $('sheet').querySelector('.as-group .as-btn').style.borderTop = title || msg ? '' : '0';
+  }
+
+  // iOS-style alert. buttons: [{label, style: 'bold'|'destructive', run}]
+  function alertBox(title, msg, buttons) {
+    closeAlert();
+    const root = document.createElement('div');
+    root.className = 'alert-root'; root.id = 'alert-root';
+    root.innerHTML = `<div class="alert" role="alertdialog"><div class="body"><h3>${title}</h3>${msg ? `<p>${msg}</p>` : ''}</div>
+      ${buttons.map((b, k) => `<button data-k="${k}" class="${b.style || ''}">${b.label}</button>`).join('')}</div>`;
+    root.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      closeAlert(); const fn = buttons[+b.dataset.k].run; fn && fn();
+    });
+    document.body.appendChild(root);
+    $('toast').classList.remove('show');
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.add('open')));
+    syncTicker();
+  }
+  function closeAlert() { const r = $('alert-root'); if (r) r.remove(); syncTicker(); }
 
   function newGameSheet() {
     const cur = S.slots.free && S.slots.free.status === 'playing' && S.slots.free.counted;
-    openSheet(`
-      <h2>New Game</h2>
-      <p class="lead">Every puzzle is new, with exactly one solution.</p>
-      <div class="levels">${LEVELS.map((l, k) => `
-        <button class="level-btn" data-act="start" data-level="${l}">
-          <span class="dots">${[0, 1, 2, 3].map(j => `<i class="${j <= k ? 'on' : ''}"></i>`).join('')}</span>
-          <span class="t"><b>${LABEL[l]}</b><span>${BLURB[l]}</span></span>
-          <span class="w">${S.stats[l].won ? `${S.stats[l].won} won` : ''}${S.stats[l].best != null ? `<br>best ${fmtTime(S.stats[l].best)}` : ''}</span>
-        </button>`).join('')}
-      </div>
-      ${cur ? `<div class="warn">Your ${LABEL[S.slots.free.level]} game in progress will count as a loss.</div>` : ''}`);
+    actionSheet('New Game', cur ? `Your ${LABEL[S.slots.free.level]} game in progress will count as a loss.` : '',
+      LEVELS.map(l => ({ label: LABEL[l], attrs: `data-act="start" data-level="${l}"` })));
   }
 
   function restartSheet() {
     const g = G();
-    openSheet(`
-      <h2>${g.daily ? 'Daily puzzle' : LABEL[g.level]}</h2>
-      <div class="btn-col">
-        <button class="pill-btn wide ghost" data-act="do-restart">Restart this puzzle</button>
-        ${g.daily ? '' : '<button class="pill-btn wide" data-act="new">New game</button>'}
-      </div>`);
+    actionSheet('', '', [
+      { label: 'Restart This Puzzle', attrs: 'data-act="do-restart"' },
+      ...(g.daily ? [] : [{ label: 'New Game', attrs: 'data-act="new"' }]),
+    ]);
   }
 
-  function gameOverSheet() {
+  function gameOverAlert() {
     const g = G(); if (!g || g.status !== 'over' || route !== 'game') return;
-    openSheet(`
-      <div class="big-mark bad"><span>${ICON.x}</span></div>
-      <h2>Game Over</h2>
-      <p class="lead">You made ${MAX_MISTAKES} mistakes.</p>
-      <div class="btn-col">
-        <button class="pill-btn wide" data-act="second-chance">Second chance</button>
-        ${g.daily ? '<button class="pill-btn wide ghost" data-act="do-restart">Restart puzzle</button>'
-        : '<button class="pill-btn wide ghost" data-act="new">New game</button>'}
-        <button class="pill-btn wide ghost" data-act="home">Home</button>
-      </div>`, { lock: true });
+    alertBox('Game Over', `You made ${MAX_MISTAKES} mistakes. Keep going with one more chance?`, [
+      { label: 'Second Chance', style: 'bold', run: secondChance },
+      g.daily ? { label: 'Restart Puzzle', run: restart } : { label: 'New Game', run: newGameSheet },
+      { label: 'Home', run: () => { paused = false; go('home'); save(); } },
+    ]);
   }
+  function secondChance() { const g = G(); g.chances = (g.chances || 0) + 1; g.status = 'playing'; renderGame(); save(); syncTicker(); }
 
   function winSheet(g) {
     if (route !== 'game' || G() !== g) return;
@@ -721,58 +718,54 @@
     const st = S.stats[g.level];
     const sec = Math.floor(g.elapsed / 1000);
     const record = st.best === sec && st.won > 1;
+    const row = (k, v, sub = '') => `<div class="cellrow"><span class="grow"><div>${k}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</span><span class="val">${v}</span></div>`;
     openSheet(`
-      <div class="big-mark"><span>${ICON.check}</span></div>
-      <h2>${g.mistakes === 0 && !g.hints ? 'Flawless!' : 'Solved!'}</h2>
-      <p class="lead">${g.daily ? 'Daily puzzle · ' : ''}${LABEL[g.level]}${record ? ' · New best time' : ''}</p>
-      <div class="result-grid">
-        <div><div class="k">Time</div><div class="n">${fmtTime(sec)}</div></div>
-        <div><div class="k">Score</div><div class="n">${fmtNum(g.score)}</div></div>
-        <div><div class="k">Mistakes</div><div class="n">${g.mistakes}</div></div>
+      <div class="result-hero">
+        <div class="badge-ic">${ICON.check}</div>
+        <h2>${g.mistakes === 0 && !g.hints ? 'Flawless!' : 'Solved!'}</h2>
+        <p>${g.daily ? 'Daily Challenge · ' : ''}${LABEL[g.level]}${record ? ' · New best time' : ''}</p>
       </div>
-      <div class="list breakdown">
-        <div class="row"><span>Numbers placed</span><span class="r">+${fmtNum(b.cells)}</span></div>
-        ${b.penalty ? `<div class="row"><span>Mistakes</span><span class="r">−${fmtNum(b.penalty)}</span></div>` : ''}
-        <div class="row"><span>Finish bonus<div class="sub">speed ×${b.speed.toFixed(2)} · accuracy ×${b.care.toFixed(1)}</div></span><span class="r">+${fmtNum(b.bonus)}</span></div>
+      <div class="sec-h">Result</div>
+      <div class="group">${row('Time', fmtTime(sec))}${row('Mistakes', g.mistakes)}${g.hints ? row('Hints', g.hints) : ''}${row('Win Streak', st.streak)}</div>
+      <div class="sec-h">Score</div>
+      <div class="group">
+        ${row('Numbers Placed', '+' + fmtNum(b.cells))}
+        ${b.penalty ? row('Mistakes', '−' + fmtNum(b.penalty)) : ''}
+        ${row('Finish Bonus', '+' + fmtNum(b.bonus), `speed ×${b.speed.toFixed(2)} · accuracy ×${b.care.toFixed(1)}`)}
+        <div class="cellrow"><span class="grow"><b>Total</b></span><span class="val" style="color:var(--label1);font-weight:600">${fmtNum(g.score)}</span></div>
       </div>
-      <p class="lead" style="margin:12px 0 0">Win streak ${st.streak} · ${st.won} ${LABEL[g.level]} game${st.won === 1 ? '' : 's'} won</p>
-      <div class="btn-col">
-        ${g.daily ? '' : `<button class="pill-btn wide" data-act="start" data-level="${g.level}">Next ${LABEL[g.level]} game</button>`}
-        <button class="pill-btn wide ${g.daily ? '' : 'ghost'}" data-act="home">Home</button>
-      </div>`, { lock: true });
+      ${g.daily ? '' : `<button class="big-btn" data-act="start" data-level="${g.level}">New ${LABEL[g.level]} Game</button>`}
+      <button class="big-btn ${g.daily ? '' : 'tinted'}" data-act="home">Done</button>`, { lock: true, title: '' });
   }
 
   function settingsSheet() {
     const st = S.settings;
     const sw = (key, title, desc = '') => `
-      <label class="set-row"><div><div>${title}</div>${desc ? `<div class="d">${desc}</div>` : ''}</div>
+      <label class="cellrow"><span class="grow"><div>${title}</div>${desc ? `<div class="sub">${desc}</div>` : ''}</span>
         <span class="switch"><input type="checkbox" data-set="${key}" ${st[key] ? 'checked' : ''}><span></span></span></label>`;
     openSheet(`
-      <h2>Settings</h2>
-      <div class="set-group-h">Game</div>
-      <div class="set-group">
-        ${sw('checkMistakes', 'Check mistakes', 'Wrong numbers turn red right away')}
-        ${sw('mistakeLimit', 'Mistake limit', 'Game over after 3 mistakes')}
-        ${sw('autoNotes', 'Auto-remove notes', 'Placing a number clears it from notes nearby')}
-        ${sw('showTimer', 'Show timer', 'In place of this week’s points')}
+      <div class="sec-h" style="margin-top:8px">Game</div>
+      <div class="group">
+        ${sw('checkMistakes', 'Check Mistakes', 'Wrong numbers turn red right away')}
+        ${sw('mistakeLimit', 'Mistake Limit', 'Game over after 3 mistakes')}
+        ${sw('autoNotes', 'Auto-Remove Notes')}
+        ${sw('showTimer', 'Show Timer')}
       </div>
-      <div class="set-group-h">Highlights</div>
-      <div class="set-group">
-        ${sw('hlArea', 'Row, column & box')}
-        ${sw('hlSame', 'Identical numbers')}
-        ${sw('hlDupes', 'Duplicates', 'Same number twice in a row, column or box')}
+      <div class="sec-h">Highlights</div>
+      <div class="group">
+        ${sw('hlArea', 'Row, Column & Box')}
+        ${sw('hlSame', 'Identical Numbers')}
+        ${sw('hlDupes', 'Duplicates')}
       </div>
-      <div class="set-group-h">Appearance</div>
-      <div class="set-group" style="padding:10px">
-        <div class="seg">${['auto', 'light', 'dark'].map(t => `<button data-act="theme" data-theme="${t}" class="${st.theme === t ? 'on' : ''}">${t[0].toUpperCase() + t.slice(1)}</button>`).join('')}</div>
+      <div class="sec-h">Appearance</div>
+      <div class="seg" style="margin:0">${['auto', 'light', 'dark'].map(t => `<button data-act="theme" data-theme="${t}" class="${st.theme === t ? 'on' : ''}">${t === 'auto' ? 'Automatic' : t[0].toUpperCase() + t.slice(1)}</button>`).join('')}</div>
+      <div class="sec-h">Data</div>
+      <div class="group">
+        <button class="cellrow action" data-act="export">Back Up Progress</button>
+        <button class="cellrow action" data-act="import">Restore From Backup</button>
+        <button class="cellrow danger" data-act="reset-stats">Reset Statistics</button>
       </div>
-      <div class="set-group-h">Your data</div>
-      <div class="set-group">
-        <button class="set-row btn" data-act="export">Back up progress…</button>
-        <button class="set-row btn" data-act="import">Restore from backup…</button>
-        <button class="set-row btn danger" data-act="reset-stats">Reset statistics</button>
-      </div>
-      <div class="foot">Sudoku ${VERSION} · works offline · no ads, no tracking<br>Progress is saved on this phone only.</div>`);
+      <div class="sec-f">Sudoku ${VERSION}. Works offline, no ads. Progress is saved on this iPhone only.</div>`, { title: 'Settings' });
   }
 
   /* ---------------- toast ---------------- */
@@ -825,9 +818,13 @@
       try {
         const j = JSON.parse(await inp.files[0].text());
         if (j.app !== 'sudoku' || !j.data || !j.data.stats) throw new Error('bad');
-        if (!confirm('Replace everything on this phone with the backup?')) return;
-        localStorage.setItem(KEY, JSON.stringify(j.data));
-        S = load(); applyTheme(); closeSheet(true); go('home'); toast('Backup restored');
+        alertBox('Restore Backup?', 'This replaces all progress on this iPhone.', [
+          { label: 'Cancel' },
+          { label: 'Restore', style: 'destructive', run: () => {
+            localStorage.setItem(KEY, JSON.stringify(j.data));
+            S = load(); applyTheme(); closeSheet(true); go('home'); toast('Backup restored');
+          } },
+        ]);
       } catch (e) { toast("That file isn't a Sudoku backup."); }
     };
     inp.click();
@@ -839,7 +836,7 @@
     if (!el) return;
     const act = el.dataset.act;
     switch (act) {
-      case 'home': closeSheet(true); paused = false; go('home'); save(); break;
+      case 'home': closeSheet(true); closeAlert(); paused = false; go('home'); save(); break;
       case 'tab-home': go('home'); break;
       case 'tab-stats': go('stats'); break;
       case 'stats-level': statsLevel = el.dataset.level; renderStats(); break;
@@ -856,16 +853,19 @@
       case 'erase': erase(); break;
       case 'notes': { const g = G(); if (g) { g.notesMode = !g.notesMode; renderGame(); save(); } break; }
       case 'hint': hint(); break;
-      case 'second-chance': { const g = G(); g.chances = (g.chances || 0) + 1; g.status = 'playing'; closeSheet(); renderGame(); save(); setTimeout(syncTicker, 300); break; }
+      case 'close': closeSheet(); break;
       case 'theme': S.settings.theme = el.dataset.theme; applyTheme(); save(); for (const b of el.parentNode.children) b.classList.toggle('on', b === el); break;
       case 'export': exportData(); break;
       case 'import': importData(); break;
       case 'reset-stats':
-        if (confirm('Reset all statistics, points and history? Games in progress are kept.')) {
-          const d = defaults(); S.stats = d.stats; S.weeks = {}; S.daily = {}; S.history = [];
-          for (const k of ['free', 'daily']) if (S.slots[k]) S.slots[k].counted = false; // recounted on next move
-          save(true); closeSheet(); toast('Statistics reset');
-        }
+        alertBox('Reset Statistics?', 'Points, streaks and history will be erased. Games in progress are kept.', [
+          { label: 'Cancel', style: 'bold' },
+          { label: 'Reset', style: 'destructive', run: () => {
+            const d = defaults(); S.stats = d.stats; S.weeks = {}; S.daily = {}; S.history = [];
+            for (const k of ['free', 'daily']) if (S.slots[k]) S.slots[k].counted = false;
+            save(true); closeSheet(); toast('Statistics reset');
+          } },
+        ]);
         break;
     }
   });
@@ -892,7 +892,7 @@
   });
 
   document.addEventListener('keydown', e => {
-    if (route !== 'game' || !$('sheet-root').hidden) return;
+    if (route !== 'game' || !$('sheet-root').hidden || $('alert-root')) return;
     const g = G(); if (!g) return;
     if (e.key >= '1' && e.key <= '9') return input(+e.key);
     if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') return erase();
