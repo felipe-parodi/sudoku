@@ -41,5 +41,10 @@ node tools/make_icons.js           # icons/icon.svg → PNGs
 
 ## Deploy
 GitHub Pages from `main` (root). **Bump `VERSION` in both `sw.js` and `app.js`** on every
-release, or installed phones keep the old version. Phones update the next time the app is
-opened online (silently, unless a game is in progress — then a "Reload" toast).
+release, or installed phones keep the old version.
+
+On the phone: opening the app online fetches the new version in the background and applies it
+at once outside a game. Mid-game it waits — an "Update Available" row appears on Home, and
+Settings shows **Install Update**. **Settings → Check for Updates** forces it any time. Either way
+the app reloads straight back into the saved game, paused. `node tools/test/update.test.js`
+exercises this flow.

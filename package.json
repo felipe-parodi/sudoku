@@ -4,7 +4,7 @@
   "description": "Offline, ad-free Sudoku PWA",
   "scripts": {
     "serve": "python3 -m http.server 8650",
-    "test": "node tools/test/engine.test.js && node tools/test/e2e.test.js",
+    "test": "node tools/test/engine.test.js && node tools/test/e2e.test.js && node tools/test/update.test.js",
     "icons": "node tools/make_icons.js"
   },
   "devDependencies": {

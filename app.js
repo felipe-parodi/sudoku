@@ -4,7 +4,7 @@
    download after install and no two games are alike. */
 (() => {
   const SD = window.Sudoku;
-  const VERSION = '1.2.1'; // keep in sync with sw.js
+  const VERSION = '1.3.0'; // keep in sync with sw.js
   const KEY = 'sudoku:v1';
   const LEVELS = ['easy', 'medium', 'hard', 'extreme'];
   const LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard', extreme: 'Extreme' };
@@ -24,6 +24,7 @@
   const ICON = {
     chev: '<svg class="chev" viewBox="0 0 8 13"><path d="M1.5 1.5 6.5 6.5 1.5 11.5"/></svg>',
     cal: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
+    down: '<svg viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></svg>',
     plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
     flame: '<svg viewBox="0 0 24 24"><path d="M12 21c-3.9 0-6.5-2.6-6.5-6.1 0-3.4 2.4-5.4 3.9-7.9.4 1.6 1.3 2.6 2.4 3.1.2-2.8 1.2-5.1 3.2-7.1.3 3.4 3.5 6.1 3.5 11.1 0 4-2.7 6.9-6.5 6.9z"/></svg>',
     trophy: '<svg viewBox="0 0 24 24"><path d="M7 3.5h10v5.2a5 5 0 0 1-10 0z"/><path d="M17 5h2.8v1.6A3.4 3.4 0 0 1 16.6 10M7 5H4.2v1.6A3.4 3.4 0 0 0 7.4 10M9.2 20.5h5.6M12 14v6.5"/></svg>',
@@ -225,6 +226,9 @@
       <div class="page">
         <div class="large-title">Sudoku</div>
         <div class="subtitle">${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+        ${updateReady ? `<div class="group" style="margin-top:14px"><button class="cellrow has-icon" data-act="update">
+          <span class="app-ic" style="background:#34c759">${ICON.down}</span>
+          <span class="grow"><div>Update Available</div><div class="sub">Tap to install — your game is saved</div></span>${ICON.chev}</button></div>` : ''}
 
         <div class="group">
           ${free ? `
@@ -760,6 +764,11 @@
       </div>
       <div class="sec-h">Appearance</div>
       <div class="seg" style="margin:0">${['auto', 'light', 'dark'].map(t => `<button data-act="theme" data-theme="${t}" class="${st.theme === t ? 'on' : ''}">${t === 'auto' ? 'Automatic' : t[0].toUpperCase() + t.slice(1)}</button>`).join('')}</div>
+      <div class="sec-h">App</div>
+      <div class="group">
+        <button class="cellrow action" data-act="update">${updateReady ? 'Install Update' : 'Check for Updates'}</button>
+        <div class="cellrow"><span class="grow">Version</span><span class="val">${VERSION}</span></div>
+      </div>
       <div class="sec-h">Data</div>
       <div class="group">
         <button class="cellrow action" data-act="export">Back Up Progress</button>
@@ -855,6 +864,7 @@
       case 'notes': { const g = G(); if (g) { g.notesMode = !g.notesMode; renderGame(); save(); } break; }
       case 'hint': hint(); break;
       case 'close': closeSheet(); break;
+      case 'update': checkForUpdates(); break;
       case 'theme': S.settings.theme = el.dataset.theme; applyTheme(); save(); for (const b of el.parentNode.children) b.classList.toggle('on', b === el); break;
       case 'export': exportData(); break;
       case 'import': importData(); break;
@@ -928,15 +938,42 @@
   });
   window.addEventListener('pagehide', () => save(true));
 
-  /* ---------------- service worker ---------------- */
+  /* ---------------- service worker / updates ----------------
+     A new version installs in the background. Outside a game it applies on
+     the spot; mid-game it waits and shows an "Update Available" row (home +
+     Settings) and a toast. Settings → Check for Updates forces a check. */
+  let swReg = null, updateReady = null;
+  function applyUpdate() {
+    const nw = updateReady || (swReg && swReg.waiting);
+    if (nw) { save(true); nw.postMessage({ type: 'SKIP_WAITING' }); return true; }
+    return false;
+  }
+  function checkForUpdates() {
+    if (applyUpdate()) return;
+    if (!swReg) { alertBox('Updates Unavailable', 'Open the app from the Home Screen to get updates.', [{ label: 'OK', style: 'bold' }]); return; }
+    if (!navigator.onLine) { alertBox('You’re Offline', 'Connect to the internet to check for updates.', [{ label: 'OK', style: 'bold' }]); return; }
+    toast('Checking for updates…');
+    let settled = false;
+    const finish = msg => { if (settled) return; settled = true; if (msg) alertBox(msg, `You have version ${VERSION}.`, [{ label: 'OK', style: 'bold' }]); };
+    swReg.update().then(() => {
+      const nw = swReg.installing || swReg.waiting;
+      if (!nw) return finish('You’re Up to Date');
+      if (nw.state === 'installed') { settled = true; updateReady = nw; applyUpdate(); return; }
+      nw.addEventListener('statechange', () => { if (nw.state === 'installed') { settled = true; updateReady = nw; applyUpdate(); } });
+      setTimeout(() => finish('Update Is Downloading'), 10000);
+    }).catch(() => finish('Couldn’t Check for Updates'));
+  }
   if ('serviceWorker' in navigator) {
     const busy = () => route === 'game' && G() && G().status === 'playing' && G().counted;
     const offer = nw => {
       if (!nw || !navigator.serviceWorker.controller) return;
-      if (!busy()) { nw.postMessage({ type: 'SKIP_WAITING' }); return; }
-      toast('Update ready', 'Reload', () => nw.postMessage({ type: 'SKIP_WAITING' }));
+      updateReady = nw;
+      if (!busy()) { applyUpdate(); return; }
+      if (route === 'home') renderHome();
+      toast('A new version is ready', 'Update', applyUpdate);
     };
     navigator.serviceWorker.register('./sw.js').then(reg => {
+      swReg = reg;
       if (reg.waiting) offer(reg.waiting);
       reg.addEventListener('updatefound', () => {
         const nw = reg.installing;
