@@ -4,7 +4,7 @@
    download after install and no two games are alike. */
 (() => {
   const SD = window.Sudoku;
-  const VERSION = '1.2.0'; // keep in sync with sw.js
+  const VERSION = '1.2.1'; // keep in sync with sw.js
   const KEY = 'sudoku:v1';
   const LEVELS = ['easy', 'medium', 'hard', 'extreme'];
   const LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard', extreme: 'Extreme' };
@@ -179,6 +179,7 @@
   let paused = false;
   function go(r) {
     route = r;
+    if (S.route !== r) { S.route = r; save(); } // relaunch lands where you left off
     for (const s of ['home', 'game', 'stats']) $(s).hidden = s !== r;
     $('tabbar').hidden = r === 'game';
     $('tab-home').classList.toggle('on', r === 'home');
@@ -962,7 +963,17 @@
     S.slots.daily = null;
     if (S.active === 'daily') S.active = 'free';
   }
-  go('home');
+  /* iOS freely kills a backgrounded home-screen app. Relaunching drops you
+     straight back into the game you were in, paused, exactly as you left it. */
+  {
+    const g = G();
+    if (S.route === 'game' && g && (g.status === 'playing' || g.status === 'over')) {
+      paused = g.status === 'playing';
+      go('game');
+      $('pv-time').textContent = fmtTime(g.elapsed / 1000);
+      if (g.status === 'over') setTimeout(gameOverAlert, 150);
+    } else go(S.route === 'stats' ? 'stats' : 'home');
+  }
   setTimeout(refillPregen, 2500);
   window.__sudoku = { get state() { return S; }, VERSION }; // for tests
 })();

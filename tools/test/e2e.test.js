@@ -66,7 +66,15 @@ async function gameFlow() {
   // persistence across reload
   await p.reload(); await p.waitForTimeout(200);
   s = await st(p); ok(s.slots.free.notes[i] === 17 && s.slots.free.mistakes === 1, 'game survives reload');
-  await p.tap('[data-act=continue]'); await p.waitForTimeout(150);
+  ok(await p.isVisible('#game') && await p.isVisible('#pause-veil'), 'relaunch returns to the game, paused');
+  const t0 = s.slots.free.elapsed; await p.waitForTimeout(1500);
+  ok((await st(p)).slots.free.elapsed === t0, 'clock stays stopped while paused');
+  await p.tap('[data-act=resume]'); await p.waitForTimeout(150);
+  // backgrounding (another app) pauses and keeps everything
+  await p.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+  await p.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+  ok(await p.isVisible('#pause-veil'), 'returning from another app shows the paused game');
+  await p.tap('[data-act=resume]'); await p.waitForTimeout(150);
 
   // three mistakes → game over
   for (const k of [2, 3]) {
