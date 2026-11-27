@@ -4,7 +4,7 @@
    download after install and no two games are alike. */
 (() => {
   const SD = window.Sudoku;
-  const VERSION = '1.0.0'; // keep in sync with sw.js
+  const VERSION = '1.1.0'; // keep in sync with sw.js
   const KEY = 'sudoku:v1';
   const LEVELS = ['easy', 'medium', 'hard', 'extreme'];
   const LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard', extreme: 'Extreme' };
@@ -92,12 +92,29 @@
     setTimeout(refillPregen, 1500);
     return s ? SD.parse(s) : makePuzzle(level, crypto.getRandomValues(new Uint32Array(1))[0]);
   }
+  let worker = null, pending = null;
   function refillPregen() {
     const q = S.pregen || (S.pregen = {});
     const missing = LEVELS.find(l => !q[l]);
     if (!missing) return save();
-    q[missing] = SD.stringify(makePuzzle(missing, crypto.getRandomValues(new Uint32Array(1))[0]));
-    setTimeout(refillPregen, 50);
+    if (pending) return;
+    try {
+      if (worker === false) throw 0;
+      if (!worker) {
+        worker = new Worker('gen-worker.js');
+        worker.onmessage = e => {
+          pending = null;
+          if (e.data.puzzle) (S.pregen || (S.pregen = {}))[e.data.level] = e.data.puzzle;
+          refillPregen();
+        };
+        worker.onerror = () => { pending = null; worker = false; };
+      }
+      pending = missing;
+      worker.postMessage({ level: missing, seed: crypto.getRandomValues(new Uint32Array(1))[0] });
+    } catch (e) { // no worker: fall back to idle main-thread generation
+      q[missing] = SD.stringify(makePuzzle(missing, crypto.getRandomValues(new Uint32Array(1))[0]));
+      setTimeout(refillPregen, 200);
+    }
   }
   function createGame(level, daily = null) {
     const p = daily ? makePuzzle(level, SD.hashString('daily:' + daily)) : takePuzzle(level);
@@ -386,9 +403,9 @@
     for (let i = 0; i < 81; i++) { const v = g.values[i]; if (v && (!st.checkMistakes || correct(g, i))) counts[v]++; }
     for (const btn of $('pad').children) {
       const d = +btn.dataset.d;
-      const done = counts[d] >= 9;
+      const done = st.checkMistakes && counts[d] >= 9;
       if (btn.classList.contains('done') !== done) {
-        btn.classList.toggle('done', done);
+        btn.classList.toggle('done', done); btn.disabled = done;
         btn.innerHTML = done ? ICON.check : String(d);
       }
     }
@@ -405,10 +422,11 @@
     const first = $('st-first');
     if (S.settings.showTimer) {
       first.firstChild.textContent = 'Time';
-      $('st-week').textContent = fmtTime(g.elapsed / 1000);
+      $('st-week').textContent = fmtTime(g.elapsed / 1000); $('st-week').dataset.h = '';
     } else {
       first.firstChild.textContent = 'This Week';
-      $('st-week').innerHTML = ICON.trophy + fmtNum(S.weeks[weekKey()] || 0);
+      const html = ICON.trophy + fmtNum(S.weeks[weekKey()] || 0);
+      if ($('st-week').dataset.h !== html) { $('st-week').innerHTML = html; $('st-week').dataset.h = html; }
     }
     $('st-level').textContent = (g.daily ? 'Daily · ' : '') + LABEL[g.level];
     $('st-score').textContent = fmtNum(g.score);
@@ -417,13 +435,22 @@
     m.classList.toggle('bad', S.settings.checkMistakes && g.mistakes > 0);
   }
 
-  function anim(i, cls, ms, delay = 0) {
-    const el = cells[i].el;
-    setTimeout(() => {
-      el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
-      setTimeout(() => el.classList.remove(cls), ms);
-    }, delay);
+  /* One-shot animations: set per-cell delays, then restart them all with a
+     single reflow. Classes clear themselves on animationend. */
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  function animMany(items, cls) {
+    const els = items.map(([i, delay]) => { const el = cells[i].el; el.style.setProperty('--delay', (delay || 0) + 'ms'); el.classList.remove(cls); return el; });
+    if (!els.length) return;
+    void els[0].offsetWidth;
+    for (const el of els) el.classList.add(cls);
   }
+  const anim = (i, cls, _ms, delay = 0) => animMany([[i, delay]], cls);
+  document.addEventListener('animationend', e => {
+    const el = e.target.closest && e.target.closest('.cell'); if (!el) return;
+    const name = e.animationName;
+    const cls = name === 'flash' ? 'flash' : name === 'shake' ? 'shake' : name === 'pop' ? 'pop' : name === 'hinted' ? 'hinted' : null;
+    if (cls) el.classList.remove(cls);
+  });
 
   /* ---------------- timer ---------------- */
   let ticker = null, lastTick = 0, saveTick = 0;
@@ -452,7 +479,7 @@
   }
   function select(i) {
     const g = G(); if (!g || paused) return;
-    g.sel = i; renderGame(); save();
+    g.sel = i; renderGame();
   }
 
   function unitsCompleted(g, i) {
@@ -469,7 +496,7 @@
     }
     const key = j => (8 - SD.COL[j]) * 3 + SD.ROW[j] * (units.every(u => u >= 9 && u < 18) ? 3 : .7);
     const k0 = Math.min(...list.map(key));
-    for (const j of list) anim(j, 'flash', 700, (key(j) - k0) * 16);
+    animMany(list.map(j => [j, (key(j) - k0) * 16]), 'flash');
   }
 
   function input(d) {
@@ -505,6 +532,7 @@
         g.penalty += BASE[g.level] * 2; g.score = liveScore(g); // a mistake costs two cells' worth
         anim(i, 'shake', 380);
         if (S.settings.mistakeLimit && mistakesLeft(g) <= 0) {
+          tick();
           g.status = 'over';
           renderGame(); save(true); syncTicker();
           setTimeout(gameOverSheet, 420);
@@ -573,9 +601,10 @@
     return { cells: g.cellPts, penalty: g.penalty, speed, care, bonus, total: liveScore(g) + bonus };
   }
   function win(g) {
-    if (!S.settings.checkMistakes) { // nothing was scored live; credit the cells now
-      for (let i = 0; i < 81; i++) if (!given(g, i) && !g.awarded[i]) { g.awarded[i] = 1; g.cellPts += BASE[g.level]; }
-    }
+    tick();
+    $('toast').classList.remove('show');
+    // credit any cell not yet scored (checking was off for part of the game); hints are already flagged
+    for (let i = 0; i < 81; i++) if (!given(g, i) && !g.awarded[i]) { g.awarded[i] = 1; g.cellPts += BASE[g.level]; }
     g.status = 'won';
     const b = scoreBreakdown(g);
     g.score = b.total; g.breakdown = b;
@@ -584,8 +613,8 @@
     g.sel = -1; paused = false;
     renderGame(); save(true); syncTicker();
     // the whole board washes blue, sweeping right → left
-    for (let i = 0; i < 81; i++) anim(i, 'flash', 900, (8 - SD.COL[i]) * 75 + SD.ROW[i] * 14);
-    setTimeout(() => winSheet(g), 1550);
+    animMany([...Array(81).keys()].map(i => [i, (8 - SD.COL[i]) * 75 + SD.ROW[i] * 14]), 'flash');
+    setTimeout(() => winSheet(g), reduceMotion.matches ? 150 : 1550);
   }
 
   function startNew(level, daily = null) {
@@ -623,8 +652,9 @@
   }
 
   /* ---------------- sheets ---------------- */
-  let sheetLocked = false;
+  let sheetLocked = false, sheetTimer = null;
   function openSheet(html, { lock = false } = {}) {
+    clearTimeout(sheetTimer);
     sheetLocked = lock;
     $('toast').classList.remove('show');
     const root = $('sheet-root');
@@ -642,7 +672,8 @@
       const g = G();
       if (route === 'game' && g && g.status === 'over') setTimeout(gameOverSheet, 50);
     };
-    if (instant) done(); else setTimeout(done, 280);
+    clearTimeout(sheetTimer);
+    if (instant) done(); else sheetTimer = setTimeout(done, 340);
   }
 
   function newGameSheet() {
@@ -756,7 +787,9 @@
       t.appendChild(b);
     }
     if (route === 'game') {
-      t.style.top = Math.max(8, $('board-wrap').getBoundingClientRect().bottom - t.offsetHeight - 8) + 'px';
+      // float over the tool row (taps pass through), never over cells or the stat row
+      const tr = document.querySelector('.tools').getBoundingClientRect();
+      t.style.top = Math.round(tr.top + (tr.height - t.offsetHeight) / 2) + 'px';
     } else t.style.top = '';
     t.classList.add('show');
     clearTimeout(toastTimer);
@@ -830,6 +863,7 @@
       case 'reset-stats':
         if (confirm('Reset all statistics, points and history? Games in progress are kept.')) {
           const d = defaults(); S.stats = d.stats; S.weeks = {}; S.daily = {}; S.history = [];
+          for (const k of ['free', 'daily']) if (S.slots[k]) S.slots[k].counted = false; // recounted on next move
           save(true); closeSheet(); toast('Statistics reset');
         }
         break;
@@ -852,9 +886,8 @@
     e.preventDefault();
     select(+c.dataset.i);
   });
-  $('pad').addEventListener('pointerdown', e => {
-    const b = e.target.closest('button'); if (!b || b.classList.contains('done')) return;
-    e.preventDefault();
+  $('pad').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || b.disabled) return;
     input(+b.dataset.d);
   });
 

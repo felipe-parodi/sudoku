@@ -13,6 +13,7 @@
   --bad: #e5484d;          /* wrong digit */
   --bad-bg: #f8d7dc;       /* conflicting cells */
   --muted: #8592a6;
+  --note: #4f5f78;
   --label: #6f7d91;
   --tool: #6e7c8f;
   --accent: #325aaf;
@@ -27,8 +28,8 @@
   :root:not([data-theme="light"]) {
     --bg: #121418; --card: #1c1f25; --cell: #1a1d22;
     --ink: #e7ebf2; --user: #7fa8ff; --thin: #343a45; --frame: #8592a8;
-    --area: #232933; --same: #2e3c55; --sel: #36507c;
-    --bad: #ff6b70; --bad-bg: #4a2329; --muted: #7f8899; --label: #8d97a8;
+    --area: #27303d; --same: #2f4366; --sel: #36507c;
+    --bad: #ff6b70; --bad-bg: #4a2329; --muted: #7f8899; --note: #9aa4b5; --label: #8d97a8;
     --tool: #a3acbb; --accent: #6f9bff; --accent-ink: #0d1424;
     --sep: rgba(255, 255, 255, .08); --flash: #3a5f9e;
     --shadow: 0 10px 40px rgba(0, 0, 0, .5);
@@ -38,8 +39,8 @@
 :root[data-theme="dark"] {
   --bg: #121418; --card: #1c1f25; --cell: #1a1d22;
   --ink: #e7ebf2; --user: #7fa8ff; --thin: #343a45; --frame: #8592a8;
-  --area: #232933; --same: #2e3c55; --sel: #36507c;
-  --bad: #ff6b70; --bad-bg: #4a2329; --muted: #7f8899; --label: #8d97a8;
+  --area: #27303d; --same: #2f4366; --sel: #36507c;
+  --bad: #ff6b70; --bad-bg: #4a2329; --muted: #7f8899; --note: #9aa4b5; --label: #8d97a8;
   --tool: #a3acbb; --accent: #6f9bff; --accent-ink: #0d1424;
   --sep: rgba(255, 255, 255, .08); --flash: #3a5f9e;
   --shadow: 0 10px 40px rgba(0, 0, 0, .5);
@@ -114,13 +115,14 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 .notes {
   position: absolute; inset: 1px; display: grid;
   grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
-  font-size: calc(var(--cellpx) * .25); color: var(--muted); text-align: center; align-items: center;
+  font-size: calc(var(--cellpx) * .25); color: var(--note); text-align: center; align-items: center;
   font-variant-numeric: tabular-nums;
 }
 .notes i { font-style: normal; }
 .notes i.hit { color: var(--accent); font-weight: 700; }
 
 .cell.pop .v { animation: pop .22s ease-out; }
+.cell.flash::after, .cell.pop .v, .cell.shake .v, .cell.hinted .v { animation-delay: var(--delay, 0ms); }
 @keyframes pop { 0% { transform: scale(.6); opacity: .3; } 70% { transform: scale(1.12); } 100% { transform: scale(1); opacity: 1; } }
 .cell.shake .v { animation: shake .36s ease-in-out; }
 @keyframes shake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-4px); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
@@ -132,7 +134,7 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 @keyframes hinted { 0% { transform: scale(1.5); color: var(--accent); } 100% { transform: scale(1); } }
 
 .pause-veil {
-  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
   background: color-mix(in srgb, var(--bg) 85%, transparent);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
 }
@@ -162,7 +164,8 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
   font-variant-numeric: tabular-nums;
 }
 .pad button:active { background: var(--sep); }
-.pad button.done { color: var(--muted); pointer-events: none; }
+.pad button.done { color: var(--muted); }
+.pad button:disabled { cursor: default; }
 .pad button.done svg { width: 28px; height: 28px; stroke-width: 2.2; }
 .pad.notes-mode button:not(.done) { color: var(--tool); }
 

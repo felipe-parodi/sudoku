@@ -2,10 +2,10 @@
 /* Sudoku service worker — cache-first, so the app runs fully offline.
    Bump VERSION (and app.js VERSION) on every deploy; installed phones pick
    the update up the next time they open the app online. */
-const VERSION = 'v1.0.0';
+const VERSION = 'v1.1.0';
 const CACHE = 'sudoku-' + VERSION;
 const ASSETS = [
-  './', './index.html', './styles.css', './app.js', './sudoku.js',
+  './', './index.html', './styles.css', './app.js', './sudoku.js', './gen-worker.js',
   './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
 ];
 
@@ -17,7 +17,8 @@ self.addEventListener('activate', e => {
   e.waitUntil((async () => {
     await self.clients.claim();
     const keys = await caches.keys();
-    await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+    // pipeparodi.com hosts other apps (Spotter…) on the same origin — only touch our own caches
+    await Promise.all(keys.filter(k => k.startsWith('sudoku-') && k !== CACHE).map(k => caches.delete(k)));
   })());
 });
 
