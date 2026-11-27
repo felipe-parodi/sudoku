@@ -12,11 +12,11 @@
     easy: 'Relaxed — lots of clues',
     medium: 'Fewer clues, simple logic',
     hard: 'Needs pairs & pointing',
-    extreme: 'X-wings, wings & beyond',
+    extreme: 'X-wings & wings — no guessing',
   };
   const BASE = { easy: 30, medium: 60, hard: 120, extreme: 200 };   // points per correct cell
-  const PAR = { easy: 300, medium: 600, hard: 1200, extreme: 1800 }; // seconds, for the time bonus
-  const DAILY_LEVEL = ['medium', 'easy', 'medium', 'medium', 'hard', 'hard', 'extreme']; // Sun..Sat
+  const PAR = { easy: 600, medium: 1080, hard: 1800, extreme: 2700 }; // seconds — finishing at par earns 1× time bonus
+  const DAILY_LEVEL = ['easy', 'easy', 'medium', 'easy', 'medium', 'medium', 'hard']; // Sun..Sat — gentle, so streaks survive
   const MAX_MISTAKES = 3;
   const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
@@ -78,17 +78,34 @@
   const dailyLevel = dateStr => { const [y, m, d] = dateStr.split('-').map(Number); return DAILY_LEVEL[new Date(y, m - 1, d).getDay()]; };
 
   /* ---------------- game model ---------------- */
-  function createGame(level, daily = null) {
-    const seed = daily ? SD.hashString('daily:' + daily) : crypto.getRandomValues(new Uint32Array(1))[0];
+  function makePuzzle(level, seed) {
     const rng = SD.mulberry32(seed);
-    let r = null;
-    for (let k = 0; k < 2000 && !r; k++) r = SD.generate(level, rng);
-    const p = r.puzzle;
+    for (let k = 0; k < 3000; k++) { const r = SD.generate(level, rng); if (r) return r.puzzle; }
+    // practically unreachable; a carved minimal puzzle is still valid and unique
+    return SD.carve(SD.fullGrid(rng), rng, level === 'easy' ? 38 : 24);
+  }
+  /* Free games come from a one-per-level queue filled in idle time, so
+     "New game" is instant even for Extreme on an older phone. */
+  function takePuzzle(level) {
+    const q = S.pregen || (S.pregen = {});
+    const s = q[level]; delete q[level];
+    setTimeout(refillPregen, 1500);
+    return s ? SD.parse(s) : makePuzzle(level, crypto.getRandomValues(new Uint32Array(1))[0]);
+  }
+  function refillPregen() {
+    const q = S.pregen || (S.pregen = {});
+    const missing = LEVELS.find(l => !q[l]);
+    if (!missing) return save();
+    q[missing] = SD.stringify(makePuzzle(missing, crypto.getRandomValues(new Uint32Array(1))[0]));
+    setTimeout(refillPregen, 50);
+  }
+  function createGame(level, daily = null) {
+    const p = daily ? makePuzzle(level, SD.hashString('daily:' + daily)) : takePuzzle(level);
     const sol = SD.solve(p, 1).solution;
     return {
       level, daily, puzzle: SD.stringify(p), solution: sol.join(''),
       values: p.slice(), notes: new Array(81).fill(0), awarded: new Array(81).fill(0),
-      mistakes: 0, limit: MAX_MISTAKES, score: 0, hints: 0, elapsed: 0,
+      mistakes: 0, chances: 0, score: 0, cellPts: 0, penalty: 0, hints: 0, elapsed: 0,
       status: 'playing', sel: -1, notesMode: false, undo: [], counted: false, created: Date.now(),
     };
   }
@@ -105,11 +122,8 @@
   };
   const isSolved = g => { for (let i = 0; i < 81; i++) if (!correct(g, i)) return false; return true; };
 
-  function addPoints(g, pts) {
-    g.score += pts;
-    const k = weekKey();
-    S.weeks[k] = (S.weeks[k] || 0) + pts;
-  }
+  const liveScore = g => Math.max(0, (g.cellPts || 0) - (g.penalty || 0));
+  const mistakesLeft = g => MAX_MISTAKES - (g.mistakes - (g.chances || 0));
   function markStarted(g) {
     if (g.counted) return;
     g.counted = true;
@@ -131,6 +145,7 @@
     S.history.unshift({ level: g.level, daily: g.daily, won, time: sec, score: g.score, mistakes: g.mistakes, hints: g.hints, at: Date.now() });
     if (S.history.length > 300) S.history.length = 300;
   }
+  function currentStreak() { let n = 0; for (const h of S.history) { if (!h.won) break; n++; } return n; }
   function dailyStreak() {
     let n = 0; const d = new Date();
     if (!S.daily[ymd(d)]) d.setDate(d.getDate() - 1); // today not done yet: streak still alive from yesterday
@@ -182,7 +197,7 @@
     const streak = dailyStreak();
     const totals = { played: 0, won: 0, streak: 0 };
     for (const l of LEVELS) { totals.played += S.stats[l].started; totals.won += S.stats[l].won; }
-    totals.streak = S.history.length ? (() => { let n = 0; for (const h of S.history) { if (!h.won) break; n++; } return n; })() : 0;
+    totals.streak = currentStreak();
 
     // this week's daily strip, Mon..Sun
     const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
@@ -227,6 +242,9 @@
       <div class="page">
         <div class="date-line">${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
         <div class="big-title">Sudoku</div>
+        ${!S.history.length && !free ? `<div class="card howto"><h3 style="margin-bottom:8px">How to play</h3>
+          Fill the grid so every <b>row</b>, <b>column</b> and <b>3×3 box</b> has 1 to 9 once. Tap a square, then a number.
+          <b>Notes</b> lets you pencil in options. Three mistakes ends the game.</div>` : ''}
         ${cont}
         <button class="pill-btn wide ${free ? 'ghost' : ''}" data-act="new">New Game</button>
         ${dailyCard}
@@ -251,8 +269,10 @@
       const s = S.stats[l];
       agg.started += s.started; agg.won += s.won; agg.lost += s.lost; agg.perfect += s.perfect; agg.total += s.total;
       if (s.best != null) agg.best = agg.best == null ? s.best : Math.min(agg.best, s.best);
-      agg.streak = Math.max(agg.streak, s.streak); agg.bestStreak = Math.max(agg.bestStreak, s.bestStreak);
+      agg.bestStreak = Math.max(agg.bestStreak, s.bestStreak);
+      if (statsLevel !== 'all') agg.streak = s.streak;
     }
+    if (statsLevel === 'all') agg.streak = currentStreak();
     const rate = agg.started ? Math.round(100 * agg.won / agg.started) + '%' : '—';
     const avg = agg.won ? fmtTime(agg.total / agg.won) : '—';
     const hist = S.history.filter(h => statsLevel === 'all' || h.level === statsLevel).slice(0, 25);
@@ -345,7 +365,10 @@
       for (const a of ['pop', 'shake', 'flash', 'hinted']) if (c.el.classList.contains(a)) cls += ' ' + a;
       if (c.el.className !== cls) c.el.className = cls;
       const txt = v ? String(v) : '';
-      if (c.v.textContent !== txt) c.v.textContent = txt;
+      if (c.v.textContent !== txt || !c.el.hasAttribute('aria-label')) {
+        c.v.textContent = txt;
+        c.el.setAttribute('aria-label', `Row ${SD.ROW[i] + 1}, column ${SD.COL[i] + 1}, ${v || 'empty'}`);
+      }
       const nm = v ? 0 : g.notes[i];
       c.notesEl.style.display = nm ? '' : 'none';
       if (nm) {
@@ -390,7 +413,7 @@
     $('st-level').textContent = (g.daily ? 'Daily · ' : '') + LABEL[g.level];
     $('st-score').textContent = fmtNum(g.score);
     const m = $('st-mistakes');
-    m.textContent = !S.settings.checkMistakes ? 'Off' : S.settings.mistakeLimit ? `${g.mistakes}/${g.limit}` : String(g.mistakes);
+    m.textContent = !S.settings.checkMistakes ? 'Off' : S.settings.mistakeLimit ? `${MAX_MISTAKES - mistakesLeft(g)}/${MAX_MISTAKES}` : String(g.mistakes);
     m.classList.toggle('bad', S.settings.checkMistakes && g.mistakes > 0);
   }
 
@@ -439,20 +462,21 @@
   }
   // completed row / column / box: cells wash blue in a wave sweeping right → left
   function celebrateUnits(g, i, units) {
-    const seen = new Set();
+    const seen = new Set(), list = [];
     for (const u of units) for (const j of SD.UNITS[u]) {
       if (seen.has(j)) continue; seen.add(j);
-      anim(j, 'flash', 700, (8 - SD.COL[j]) * 45 + SD.ROW[j] * 12);
+      list.push(j);
     }
+    const key = j => (8 - SD.COL[j]) * 3 + SD.ROW[j] * (units.every(u => u >= 9 && u < 18) ? 3 : .7);
+    const k0 = Math.min(...list.map(key));
+    for (const j of list) anim(j, 'flash', 700, (key(j) - k0) * 16);
   }
 
   function input(d) {
     const g = G(); if (!g || g.status !== 'playing' || paused) return;
-    const i = g.sel; if (i < 0) return;
-    if (locked(g, i)) {
-      // tapping a digit on a filled cell just highlights that digit — but only for unlocked cells do we write
-      return;
-    }
+    const i = g.sel;
+    if (i < 0) { toast('Tap a square first'); return; }
+    if (locked(g, i)) return;
     markStarted(g);
     if (g.notesMode) {
       pushUndo(g, [i]);
@@ -471,16 +495,16 @@
 
     if (S.settings.checkMistakes) {
       if (right) {
-        if (!g.awarded[i]) { g.awarded[i] = 1; addPoints(g, BASE[g.level]); }
+        if (!g.awarded[i]) { g.awarded[i] = 1; g.cellPts += BASE[g.level]; g.score = liveScore(g); }
         anim(i, 'pop', 240);
         const units = unitsCompleted(g, i);
         if (isSolved(g)) return win(g);
         if (units.length) celebrateUnits(g, i, units);
       } else {
         g.mistakes++;
-        g.score = Math.max(0, g.score - BASE[g.level] * 2); // a mistake costs two cells' worth
+        g.penalty += BASE[g.level] * 2; g.score = liveScore(g); // a mistake costs two cells' worth
         anim(i, 'shake', 380);
-        if (S.settings.mistakeLimit && g.mistakes >= g.limit) {
+        if (S.settings.mistakeLimit && mistakesLeft(g) <= 0) {
           g.status = 'over';
           renderGame(); save(true); syncTicker();
           setTimeout(gameOverSheet, 420);
@@ -537,19 +561,31 @@
     renderGame(); save();
   }
 
-  function win(g) {
-    g.status = 'won';
-    const sec = g.elapsed / 1000;
-    // finish bonus: faster than par pays more (0.5×–2×), and every mistake trims it by a fifth
-    const speed = Math.min(2, Math.max(.5, PAR[g.level] / Math.max(sec, 1)));
+  /* Score = cells you placed yourself − mistake penalties + a finish bonus.
+     Finish bonus = 15 cells' worth × speed × accuracy, where speed is par/time
+     (2× when twice as fast as par, 1× at par, ½× at double par, floor ¼×) and
+     accuracy drops a fifth per mistake and a tenth per hint (floor 0.2). */
+  function scoreBreakdown(g) {
+    const sec = Math.max(1, g.elapsed / 1000);
+    const speed = Math.min(2, Math.max(.25, PAR[g.level] / sec));
     const care = Math.max(.2, 1 - .2 * g.mistakes - .1 * g.hints);
     const bonus = Math.round(BASE[g.level] * 15 * speed * care);
-    addPoints(g, bonus);
+    return { cells: g.cellPts, penalty: g.penalty, speed, care, bonus, total: liveScore(g) + bonus };
+  }
+  function win(g) {
+    if (!S.settings.checkMistakes) { // nothing was scored live; credit the cells now
+      for (let i = 0; i < 81; i++) if (!given(g, i) && !g.awarded[i]) { g.awarded[i] = 1; g.cellPts += BASE[g.level]; }
+    }
+    g.status = 'won';
+    const b = scoreBreakdown(g);
+    g.score = b.total; g.breakdown = b;
+    S.weeks[weekKey()] = (S.weeks[weekKey()] || 0) + g.score;
     recordEnd(g, true);
     g.sel = -1; paused = false;
     renderGame(); save(true); syncTicker();
-    for (let i = 0; i < 81; i++) anim(i, 'flash', 700, (8 - SD.COL[i]) * 70 + SD.ROW[i] * 18);
-    setTimeout(() => winSheet(g, bonus), 1500);
+    // the whole board washes blue, sweeping right → left
+    for (let i = 0; i < 81; i++) anim(i, 'flash', 900, (8 - SD.COL[i]) * 75 + SD.ROW[i] * 14);
+    setTimeout(() => winSheet(g), 1550);
   }
 
   function startNew(level, daily = null) {
@@ -557,6 +593,7 @@
     const old = S.slots[slot];
     if (old && old.status !== 'won') recordEnd(old, false);
     S.slots[slot] = createGame(level, daily);
+    S.slots[slot].sel = S.slots[slot].values.indexOf(0);
     S.active = slot;
     if (!daily) S.lastLevel = level;
     paused = false;
@@ -577,10 +614,10 @@
     startNew(dailyLevel(t), t);
   }
   function restart() {
-    const g = G(); if (!g) return;
+    const g = G(); if (!g || g.status === 'won') return;
     g.values = SD.parse(g.puzzle); g.notes = new Array(81).fill(0);
-    g.mistakes = 0; g.limit = MAX_MISTAKES; g.undo = []; g.sel = -1; g.status = 'playing'; g.notesMode = false;
-    g.elapsed = 0; g.score = 0; g.awarded = new Array(81).fill(0); g.hints = 0;
+    g.mistakes = 0; g.chances = 0; g.undo = []; g.sel = -1; g.status = 'playing'; g.notesMode = false;
+    g.elapsed = 0; g.score = 0; g.cellPts = 0; g.penalty = 0; g.awarded = new Array(81).fill(0); g.hints = 0;
     paused = false;
     closeSheet(true); renderGame(); save(true); syncTicker();
   }
@@ -589,6 +626,7 @@
   let sheetLocked = false;
   function openSheet(html, { lock = false } = {}) {
     sheetLocked = lock;
+    $('toast').classList.remove('show');
     const root = $('sheet-root');
     $('sheet').innerHTML = (lock ? '' : '<div class="grabber"></div>') + html;
     root.hidden = false;
@@ -599,7 +637,11 @@
     const root = $('sheet-root');
     if (root.hidden) return;
     root.classList.remove('open');
-    const done = () => { root.hidden = true; syncTicker(); };
+    const done = () => {
+      root.hidden = true; syncTicker();
+      const g = G();
+      if (route === 'game' && g && g.status === 'over') setTimeout(gameOverSheet, 50);
+    };
     if (instant) done(); else setTimeout(done, 280);
   }
 
@@ -633,7 +675,7 @@
     openSheet(`
       <div class="big-mark bad"><span>${ICON.x}</span></div>
       <h2>Game Over</h2>
-      <p class="lead">You made ${g.limit} mistakes.</p>
+      <p class="lead">You made ${MAX_MISTAKES} mistakes.</p>
       <div class="btn-col">
         <button class="pill-btn wide" data-act="second-chance">Second chance</button>
         ${g.daily ? '<button class="pill-btn wide ghost" data-act="do-restart">Restart puzzle</button>'
@@ -642,8 +684,9 @@
       </div>`, { lock: true });
   }
 
-  function winSheet(g, bonus) {
-    if (route !== 'game') return;
+  function winSheet(g) {
+    if (route !== 'game' || G() !== g) return;
+    const b = g.breakdown || scoreBreakdown(g);
     const st = S.stats[g.level];
     const sec = Math.floor(g.elapsed / 1000);
     const record = st.best === sec && st.won > 1;
@@ -656,7 +699,12 @@
         <div><div class="k">Score</div><div class="n">${fmtNum(g.score)}</div></div>
         <div><div class="k">Mistakes</div><div class="n">${g.mistakes}</div></div>
       </div>
-      <p class="lead" style="margin:8px 0 0">Includes a ${fmtNum(bonus)}-point finish bonus for speed${g.mistakes ? '' : ' and no mistakes'}<br>Win streak ${st.streak} · ${st.won} ${LABEL[g.level]} game${st.won === 1 ? '' : 's'} won</p>
+      <div class="list breakdown">
+        <div class="row"><span>Numbers placed</span><span class="r">+${fmtNum(b.cells)}</span></div>
+        ${b.penalty ? `<div class="row"><span>Mistakes</span><span class="r">−${fmtNum(b.penalty)}</span></div>` : ''}
+        <div class="row"><span>Finish bonus<div class="sub">speed ×${b.speed.toFixed(2)} · accuracy ×${b.care.toFixed(1)}</div></span><span class="r">+${fmtNum(b.bonus)}</span></div>
+      </div>
+      <p class="lead" style="margin:12px 0 0">Win streak ${st.streak} · ${st.won} ${LABEL[g.level]} game${st.won === 1 ? '' : 's'} won</p>
       <div class="btn-col">
         ${g.daily ? '' : `<button class="pill-btn wide" data-act="start" data-level="${g.level}">Next ${LABEL[g.level]} game</button>`}
         <button class="pill-btn wide ${g.daily ? '' : 'ghost'}" data-act="home">Home</button>
@@ -707,6 +755,9 @@
       b.onclick = () => { t.classList.remove('show'); fn(); };
       t.appendChild(b);
     }
+    if (route === 'game') {
+      t.style.top = Math.max(8, $('board-wrap').getBoundingClientRect().bottom - t.offsetHeight - 8) + 'px';
+    } else t.style.top = '';
     t.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove('show'), actLabel ? 8000 : 2600);
@@ -763,7 +814,7 @@
       case 'start': startNew(el.dataset.level); break;
       case 'continue': openSlot('free'); break;
       case 'daily': playDaily(); break;
-      case 'restart': restartSheet(); break;
+      case 'restart': if (G() && G().status !== 'won') restartSheet(); break;
       case 'do-restart': restart(); break;
       case 'pause': paused = true; $('pv-time').textContent = fmtTime(G().elapsed / 1000); renderGame(); syncTicker(); break;
       case 'resume': paused = false; renderGame(); syncTicker(); break;
@@ -772,7 +823,7 @@
       case 'erase': erase(); break;
       case 'notes': { const g = G(); if (g) { g.notesMode = !g.notesMode; renderGame(); save(); } break; }
       case 'hint': hint(); break;
-      case 'second-chance': { const g = G(); g.limit++; g.status = 'playing'; closeSheet(); renderGame(); save(); setTimeout(syncTicker, 300); break; }
+      case 'second-chance': { const g = G(); g.chances = (g.chances || 0) + 1; g.status = 'playing'; closeSheet(); renderGame(); save(); setTimeout(syncTicker, 300); break; }
       case 'theme': S.settings.theme = el.dataset.theme; applyTheme(); save(); for (const b of el.parentNode.children) b.classList.toggle('on', b === el); break;
       case 'export': exportData(); break;
       case 'import': importData(); break;
@@ -879,5 +930,6 @@
     if (S.active === 'daily') S.active = 'free';
   }
   go('home');
+  setTimeout(refillPregen, 2500);
   window.__sudoku = { get state() { return S; }, VERSION }; // for tests
 })();

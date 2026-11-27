@@ -20,7 +20,7 @@ const BASE = process.env.SUDOKU_URL || 'http://localhost:8650/';
     const g = __sudoku.state.slots.free; let k = 0;
     for (let i = 0; i < 81; i++) if (g.puzzle[i] === '.' && (k++ % 2 === 0)) g.values[i] = +g.solution[i];
   });
-  const cells = await p.$$('.cell');
+  const cells = new Proxy({}, { get: (_, k) => p.locator(`.cell[data-i="${k}"]`) });
   // select an empty cell, make a mistake
   const empty = await p.evaluate(() => { const g = __sudoku.state.slots.free; for (let i = 0; i < 81; i++) if (!g.values[i]) return i; });
   await cells[empty].tap();

@@ -333,15 +333,16 @@
     st => nakedSubset(st, 4), st => hiddenSubset(st, 4), st => fish(st, 4),
   ];
 
-  function grade(grid) {
+  function grade(grid, opts = {}) {
     const st = makeState(grid);
     const used = {};
     let tier = 0;
     const note = t => { used[t] = (used[t] || 0) + 1; tier = Math.max(tier, TIER[t]); };
     for (;;) {
       if (st.g.every(Boolean)) break;
-      const s = findNakedSingle(st) || findHiddenSingle(st);
+      const s = opts.scanOnly ? findHiddenSingle(st) : (findNakedSingle(st) || findHiddenSingle(st));
       if (s) { place(st, s.i, s.d); note(s.unit < 0 ? 'naked single' : 'hidden single'); continue; }
+      if (opts.scanOnly) { tier = 4; break; }
       let t = null;
       for (const f of ELIMINATORS) { t = f(st); if (t) break; }
       if (t) { note(t); continue; }
@@ -351,11 +352,15 @@
   }
 
   /* ---------- difficulty bins ---------- */
-  function classify(gr) {
-    if (gr.tier <= 1 && gr.givens >= 36) return 'easy';
+  /* easy: lots of clues, solvable by scanning alone (hidden singles)
+     medium: singles only, fewer clues
+     hard: needs locked candidates / pairs / triples
+     extreme: needs fish, wings or quads — but never guessing */
+  function classify(gr, scanOnly) {
+    if (gr.tier <= 1 && gr.givens >= 36 && scanOnly) return 'easy';
     if (gr.tier <= 1 && gr.givens <= 32) return 'medium';
     if (gr.tier === 2 && gr.givens <= 30) return 'hard';
-    if (gr.tier >= 3) return 'extreme';
+    if (gr.tier === 3) return 'extreme';
     return null;
   }
 
@@ -366,7 +371,8 @@
       : level === 'medium' ? 28 + ((rng() * 3) | 0) : 17;
     const p = carve(sol, rng, min);
     const gr = grade(p);
-    return classify(gr) === level ? { puzzle: p, grade: gr } : null;
+    const scan = level === 'easy' ? grade(p, { scanOnly: true }).solved : false;
+    return classify(gr, scan) === level ? { puzzle: p, grade: gr } : null;
   }
 
   /* ---------- validity-preserving transforms ----------
